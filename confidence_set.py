@@ -1,8 +1,6 @@
 from collections import Counter
 import os 
 
-
-
 # 将鉴定得到的未知修饰质量写入盲搜/限定式结果文件
 def accurate_mass_for_result_file(file_path, mass_diff_dict, parameter_dict, mode='blind'): 
     with open(file_path, 'r', encoding='utf-8') as f: 

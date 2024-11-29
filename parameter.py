@@ -9,8 +9,6 @@ Description: Do not edit
 '''
 import os
 
-
-# 这里和pFind中的值有细微的差别，但是应该不太影响？如果未来需要改成pFind中的值，可以采用注释中的element_dict
 element_dict = {
     "C": 12.0000000,
     "H": 1.00782503207,
