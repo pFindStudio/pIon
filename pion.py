@@ -8,7 +8,7 @@ FilePath: \code1\pIon\pion.py
 Description: Do not edit
 '''
 from re import T
-from blind_search import blind_search
+from blind_search import blind_search, psm_filter
 from close_identify import new_close_search
 from utils import parameter_file_read, pfind_path_find, delete_file, parameter_file_read_i
 from ion_modification_filter import blind_res_read, get_ms2_ms1_scan_dict, mgf_read_for_ion_pfind_filter2, get_modification_from_result, close_ion_learning, heatmap_ion
@@ -147,32 +147,6 @@ def p_ion_run(parameter_dict, current_path):
     psm_filter(pchem_summary_path1, filter_frequency)
     heat_map_draw = heatmap_ion(pchem_output_path, pchem_summary_path1)
 
-def psm_filter(pchem_summary_path, filter_frequency):
-    with open(pchem_summary_path, 'r', encoding='utf-8') as f:
-        lines = f.readlines()
-    re_lines = [lines[0]]
-    max_psm = 1
-    for line in lines[1:]:
-        if line != "\n":
-            t_psms = int(line.split("\t")[5])
-            if t_psms >= max_psm:
-                max_psm = t_psms
-    index = 1
-    for line in lines[1:]:
-        if line != "\n":
-            t_psms = int(line.split("\t")[5])
-            if t_psms > filter_frequency * max_psm / 100:
-                re_lines.append(line)
-    with open(pchem_summary_path, 'w', encoding='utf-8') as f1:
-        for index, i in enumerate(re_lines):
-            if index == 0:
-                t = i
-            else:
-                line_res = i.split("\t")
-                line_res[0] = str(index)
-                t = "\t".join(line_res)
-            f1.write(t)
-        f1.write('\n')
 
 if __name__ == "__main__":
     run()
