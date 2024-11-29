@@ -10,7 +10,7 @@ from pparse import data_preprocess
 from confidence_set import accurate_mass_for_result_file
 
 def new_close_search(current_path): 
-    pchem_cfg_path = os.path.join(current_path, 'pChem.cfg')
+    pchem_cfg_path = os.path.join(current_path, 'pIon.cfg')
     close_cfg_path = os.path.join(os.path.join(os.path.join(current_path, 'bin'), 'template'), 'close.cfg') 
     # parameter_dict = parameter_file_read(pchem_cfg_path) 
     parameter_dict = data_preprocess(pchem_cfg_path, current_path) 
@@ -199,7 +199,7 @@ def mod2pep_generate(close_pfind_path, mass_diff_list):
 def close_search(current_path):
     
     
-    pchem_cfg_path = os.path.join(current_path, 'pChem.cfg')
+    pchem_cfg_path = os.path.join(current_path, 'pIon.cfg')
     close_cfg_path = os.path.join(os.path.join(os.path.join(current_path, 'bin'), 'template'), 'close.cfg')
 
     # 读取位置修饰质量数的列表

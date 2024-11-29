@@ -1,6 +1,8 @@
 from collections import Counter
 import os 
 
+
+
 # 将鉴定得到的未知修饰质量写入盲搜/限定式结果文件
 def accurate_mass_for_result_file(file_path, mass_diff_dict, parameter_dict, mode='blind'): 
     with open(file_path, 'r', encoding='utf-8') as f: 
@@ -70,8 +72,8 @@ def r2_score_compute(target_mass_list, mass_list):
 '''
 
 # 计算位点分布的可信度 
-from scipy.stats import binomtest
-from collections import Counter 
+from scipy.stats import binomtest 
+from collections import Counter
 def position_test(position_counter, prior_distribution): 
     total_num = 0
     for v in position_counter.values():
@@ -190,6 +192,8 @@ def p_value_for_mod_unify_sim(mod_name, position_list, parameter_dict, pattern):
             p_value_dict[pair[0]] = 1.0
     # print(pair[0])        
     return p_value_dict 
+
+
 
 
 if __name__ == "__main__": 

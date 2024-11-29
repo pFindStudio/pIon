@@ -16,7 +16,7 @@ import shutil
 
 def blind_search(current_path):
     # 路径参数
-    pchem_cfg_path = os.path.join(current_path, 'pChem.cfg')
+    pchem_cfg_path = os.path.join(current_path, 'pIon.cfg')
     blind_cfg_path = os.path.join(os.path.join(
         os.path.join(current_path, 'bin'), 'template'), 'blind.cfg')
 

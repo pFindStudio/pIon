@@ -71,6 +71,14 @@ def psite_result_read(file_path, blind_summary_file_path, mod):
             continue
         score = float(line[3])
         spec = line[0]
+        # 用于测试不同的psite阈值
+        # if score < 5.0:
+        #    continue
+        #print(score, spec2pos[spec])
+        # if spec2pos[spec][0] == 'C':
+        #    i += 1
+        #total += 1
+    # print(float(i/total))
         spec2score[spec] = score
 
     return spec2score

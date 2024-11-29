@@ -3,12 +3,13 @@ Email: pengyaping21@mails.ucas.ac.cn
 Author: pengyaping21
 LastEditors: pengyaping21
 Date: 2022-06-28 12:07:49
-LastEditTime: 2024-05-17 13:12:03
-FilePath: \pChem_ion-2024-5-tims\pparse.py
+LastEditTime: 2024-11-27 14:38:04
+FilePath: \pChem-main\pparse.py
 Description: Do not edit
 '''
 from utils import parameter_pick, parameter_modify, parameter_file_read, pfind_path_find
 import os
+import shutil
 
 
 def parameter_select(cfg_path):
@@ -31,9 +32,6 @@ def data_preprocess(cfg_path, current_path):
     pfind_file_path = os.path.join(pparse_file_path, 'pFind')
     pparse_file_path = os.path.join(pparse_file_path, 'pParse')
     pparse_exe_path = os.path.join(pparse_file_path, 'pParse.exe')
-    
-    # 新pParse路径
-    pparse_exe_path = os.path.join(pfind_file_path, 'bin/pParse.exe')
 
     parameter_dict = parameter_file_read(cfg_path)
 
@@ -53,10 +51,7 @@ def data_preprocess(cfg_path, current_path):
         receive = os.system(cmd) 
         print(receive)
         '''
-        if parameter_dict['msmstype'] == "TIMS":
-            cmd = pparse_exe_path + ' -D ' + t_msms_path + ' -O ' + pparse_output_path  + ' -F TIMS'
-        else:
-            cmd = pparse_exe_path + ' -D ' + t_msms_path + ' -O ' + pparse_output_path
+        cmd = pparse_exe_path + ' -D ' + t_msms_path + ' -O ' + pparse_output_path
         # 切换环境
         os.chdir(pparse_file_path)
         receive = os.system(cmd)
@@ -70,6 +65,11 @@ def data_preprocess(cfg_path, current_path):
 
     print(parameter_dict['msms_path'])
     print(pf2_name_list)
+    
+    for msms_path in parameter_dict['msms_path']:
+        _, t_msms_path = msms_path.split('=')
+        shutil.copy2(t_msms_path[:-1], os.path.join(pparse_output_path, os.path.basename(t_msms_path[:-1])))
+    
     parameter_dict['msmstype'] = 'PF2'
     # assert len(parameter_dict['msms_path']) == len(pf2_name_list)
     if len(parameter_dict['msms_path']) != len(pf2_name_list):

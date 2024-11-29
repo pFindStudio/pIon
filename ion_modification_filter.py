@@ -3,15 +3,15 @@ Email: pengyaping21@mails.ucas.ac.cn
 Author: pengyaping21
 LastEditors: pengyaping21
 Date: 2023-04-10 09:54:56
-LastEditTime: 2024-09-28 14:39:15
-FilePath: \pChem2\ion_modification_filter.py
+LastEditTime: 2024-11-29 10:21:43
+FilePath: \code\ion_modification_filter.py
 Description: Do not edit
 '''
+
 
 from asyncio.windows_events import NULL
 from utils import parameter_file_read, parameter_file_read_ion
 import os
-import re
 from collections import Counter
 import numpy as np
 import matplotlib.pyplot as plt
@@ -20,18 +20,28 @@ from parameter import element_dict, amino_acid_dict, common_dict_create
 import pandas as pd
 from tqdm import tqdm
 import time
+from scipy.stats import ks_2samp
 from scipy.stats import mannwhitneyu
 import json
 import glob
+from bisect import bisect_left
+from plabel_run import plabel_run1
 import warnings
 from scipy.spatial.distance import cosine
 from numba import jit
 from numba.typed import List
 import seaborn as sns
+import re
+from protein_analysis import mod_summary, read_filtered_spectra, target_protein_file_generate
+
 
 h2o_mass = element_dict["H"]*2 + element_dict["O"]*1
 proton_mass = element_dict['Pm']
+# ion_common = ion_common_dict
+
 # 存放谱图的类
+
+
 class MassSpectrum:
     def __init__(self, charge, pepmass, peak_list):
         self.charge = charge
@@ -45,19 +55,21 @@ class MassSpectrum_for_ion:
         self.pepmass = pepmass
         self.peak_list = peak_list
         self.ms1_peak = spectrum_ms1_peak
-        self.relative_peak_list = self.calculate_relative_peak_list()
+        self.relative_peak_list = self.get_relative_peak_list()
 
-    def calculate_relative_peak_list(self):
-        """Calculate relative peak intensities based on the maximum peak."""
-        if not self.peak_list:
-            return []
+    # def forward(self):
+    #     self.get_relative_peak_list()
 
-        # Extract intensities from peak_list
-        intensities = [float(item[1]) for item in self.peak_list]
-        max_peak = max(intensities)
-
-        # Create relative peak list
-        return [(item[0], intensity / max_peak) for item, intensity in zip(self.peak_list, intensities)]
+    def get_relative_peak_list(self):
+        position_list = []
+        peak_list = []
+        relative_peak_list = []
+        for item in self.peak_list:
+            peak_list.append(float(item[1]))
+        max_peak = max(peak_list)
+        for item in self.peak_list:
+            relative_peak_list.append((item[0], float(item[1])/max_peak))
+        return relative_peak_list
 
 
 @jit
@@ -157,6 +169,96 @@ def mgf_read_for_ion_pfind_filter(mgf_path, blind_res):
     mass_spectra_dict = {}
     with open(mgf_path, 'r') as f:
         lines = f.readlines()
+    # print('reading mgf data.')
+    blind_res_title_list = []
+    for item in blind_res:
+        # 底层是哈希表
+        blind_res_title_list.append(item.split("\t")[0])
+    # tempLst = list(range(len(blind_res_title_list)))
+    dct = dict(zip(blind_res_title_list, blind_res_title_list))
+    i = 0
+    while i < len(lines):
+        if 'BEGIN' in lines[i]:
+            i += 1
+            spectrum_name = lines[i].split('=')[1].strip()
+            flag = False
+            if spectrum_name in dct:
+                flag = True
+            i += 1
+            spectrum_charge = int(lines[i].split('=')[1][0])
+            i += 2
+            spectrum_pepmass = float(lines[i].split('=')[1])
+            spectrum_peak_list = []
+            while i < len(lines):
+                i += 1
+                if 'END' in lines[i]:
+                    break
+                spectrum_peak_list.append(lines[i].split())
+            # print(spectrum_peak_list)
+            if flag:
+                spectrum = MassSpectrum_for_ion(
+                    spectrum_charge, spectrum_pepmass, spectrum_peak_list)
+                mass_spectra_dict[spectrum_name] = spectrum
+        i += 1
+    print('The number of spectra: ', len(mass_spectra_dict.keys()))
+    return mass_spectra_dict
+
+
+def mgf_read_for_ion_pfind_filter1(mgf_path, blind_res, blind_res_ms1_dict):
+    mass_spectra_dict = {}
+    with open(mgf_path, 'r') as f:
+        lines = f.readlines()
+    start_index_list = []
+    # end_index_list = []
+    for index, line in enumerate(lines):
+        if "BEGIN IONS" in line:
+            start_index_list.append(
+                (index, lines[index+1].split("=")[-1][:-1]))
+    # for index, line in enumerate(lines):
+    #     if "END IONS" in line:
+    #         end_index_list.append(index)
+    # print(index_list)
+
+    # print('reading mgf data.')
+    blind_res_title_list = []
+    for item in blind_res:
+        # 底层是哈希表
+        blind_res_title_list.append(item.split("\t")[0])
+    dct = dict(zip(blind_res_title_list, blind_res_title_list))
+
+    result_index = []
+    # result_end_index = []
+    # end_index = end_index_l[start_index_l.index(start_index)]
+    for i in start_index_list:
+        if i[1] in dct:
+            result_index.append(i[0])
+
+    for index, i in enumerate(result_index):
+        spectrum_name = lines[i+1].split('=')[1].strip()
+        spectrum_charge = int(lines[i+2].split('=')[1][0])
+        spectrum_pepmass = float(lines[i+4].split('=')[1])
+        spectrum_peak_list = []
+        spectrum_ms1_peak = float(
+            blind_res_ms1_dict[spectrum_name].split(" ")[-1][:-1])
+        j = i+5
+        while j < len(lines):
+            if 'END' in lines[j]:
+                break
+            else:
+                spectrum_peak_list.append(lines[j].split())
+            j += 1
+        # ms1 = ms2_ms1_scan_dict[int(spectrum_name.split(".")[2])]
+        spectrum = MassSpectrum_for_ion(
+            spectrum_charge, spectrum_pepmass, spectrum_peak_list, spectrum_ms1_peak)
+        mass_spectra_dict[spectrum_name] = spectrum
+    print('The number of spectra: ', len(mass_spectra_dict.keys()))
+    return mass_spectra_dict
+
+
+def mgf_read_for_ion_pfind_filter2(mgf_path, blind_res):
+    mass_spectra_dict = {}
+    with open(mgf_path, 'r') as f:
+        lines = f.readlines()
     start_index_list = []
     # end_index_list = []
 
@@ -178,9 +280,7 @@ def mgf_read_for_ion_pfind_filter(mgf_path, blind_res):
         line = i.split("\n")
         line = [l for l in line if l != ""]
         t_spec_name = line[0].split("=")[1]
-        if t_spec_name not in sl:
-            continue
-        else:
+        if t_spec_name in sl:
             # reserve_mgf_content.append(i)
             t_peak_list = []
             for index, l in enumerate(line):
@@ -881,7 +981,25 @@ def delete_peak_for_mod(peak_list, delete_peak_list, mass_vector, mod_pos, mod_p
 def calc_ppm(a, b):
     return abs((a-b)/a)*1000000
 
-# 返回指定谱图系列filtered_res的特征离子
+
+def find_closest_value(arr, step, target):
+    index = int((target - float((arr[0]))) // step)  # 初始索引位置
+    left = max(0, index - 1)
+    right = min(len(arr) - 1, index + 1)
+
+    while left <= right:
+        if abs(float(arr[left]) - target) < abs(float(arr[right]) - target):
+            return arr[left]
+        elif abs(float(arr[right]) - target) < abs(float(arr[left]) - target):
+            return arr[right]
+        else:
+            left -= 1
+            right += 1
+
+    return arr[index]
+
+
+# 返回指定谱图系列filtered_res的特征离子, pyp
 def feature_peak_determine_for_ion(mass_spectra_dict, filtered_res, common_modification_dict, mod_flag, modification_dict, modification, close_ion, ion_relative_mode, modification_site, pchem_output_path, ion_filter_mode):
     # 保留6位小数的
     fine_position_list = []
@@ -962,7 +1080,20 @@ def feature_peak_determine_for_ion(mass_spectra_dict, filtered_res, common_modif
                     for item in peak_list:
                         relative_peak_list.append(
                             (item[0], cal_divide(float(item[1]), max_peak)))
-
+                # close_ion_flag = False
+                # for p in peak_list:
+                #     if round(float(close_ion), 2) == round(float(p[0]), 2):
+                #         close_ion_flag = True
+                #         break
+                #     if round(float(p[0]), 2) > round(float(close_ion), 2) + 1:
+                #         break
+                # if close_ion_flag:
+                #     have_close_ion_scan_dict[spectrum_name] = {}
+                #     have_close_ion_scan_dict[spectrum_name]["rt"] = mass_spectra_dict[spectrum_name].rt
+                #     have_close_ion_scan_dict[spectrum_name]["scan"] = int(
+                #         spectrum_name.split(".")[-4])
+                #     have_close_ion_scan_dict[spectrum_name]["mz"] = mass_spectra_dict[spectrum_name].pepmass
+                #     have_close_ion_scan_dict[spectrum_name]["mod_flag"] = ""
 
             else:
                 peak_list = mass_spectra_dict[spectrum_name].peak_list
@@ -989,6 +1120,20 @@ def feature_peak_determine_for_ion(mass_spectra_dict, filtered_res, common_modif
                         relative_peak_list.append(
                             (item[0], cal_divide(float(item[1]), max_peak)))
 
+                # close_ion_flag = False
+                # for p in peak_list:
+                #     if round(float(close_ion), 2) == round(float(p[0]), 2):
+                #         close_ion_flag = True
+                #         break
+                #     if round(float(p[0]), 2) > round(float(close_ion), 2) + 1:
+                #         break
+                # if close_ion_flag:
+                #     have_close_ion_scan_dict[spectrum_name] = {}
+                #     have_close_ion_scan_dict[spectrum_name]["rt"] = mass_spectra_dict[spectrum_name].rt
+                #     have_close_ion_scan_dict[spectrum_name]["scan"] = int(
+                #         spectrum_name.split(".")[-4])
+                #     have_close_ion_scan_dict[spectrum_name]["mz"] = mass_spectra_dict[spectrum_name].pepmass
+                #     have_close_ion_scan_dict[spectrum_name]["mod_flag"] = modification
 
         close_ion_count = 0
         close_ion_index = []
@@ -1037,7 +1182,11 @@ def feature_peak_determine_for_ion(mass_spectra_dict, filtered_res, common_modif
                     (p_label1, float(p[1])))
                 coarse_position_relative_peak_list.append(
                     (p_label1, float(pr[1])))
-
+        # coarse_position_list += [round(float(p[0]), 2) for p in peak_list]
+        # coarse_position_peak_list += [(round(float(p[0]), 2), float(p[1]))
+        #                               for p in peak_list]
+        # coarse_position_relative_peak_list += [
+        #     (round(float(p[0]), 2), float(p[1])) for p in relative_peak_list]
 
     position_counter = Counter(coarse_position_list)
     filtered_position_list = [p[0]
@@ -1049,12 +1198,33 @@ def feature_peak_determine_for_ion(mass_spectra_dict, filtered_res, common_modif
         fine_peak_dict[position] = []
         fine_relative_peak_dict[position] = []
     for position, position1 in zip(fine_position_peak_list, fine_position_relative_peak_list):
+        # #peak = round(position[0], 2)
+        # index_t = int((position[0] - float(center_bins[0])) // 0.002)  # 向下取整
+        # index_t1 = index_t+1
+        # # p_label = find_closest_value(center_bins, 0.002, p_t)
+        # p_label = center_bins[index_t]
+        # p_label1 = center_bins[index_t1]
+        # if abs(float(p_label) - position[0]) <= abs(float(p_label1) - position[0]):
+        #     peak = p_label
+        # else:
+        #     peak = p_label1
         peak = pr_dict[position[0]]
         if peak in peak_dict.keys():
             peak_dict[peak].append(position[0])
             fine_peak_dict[peak].append((position[0], position[1]))
             fine_relative_peak_dict[peak].append((position1[0], position1[1]))
-
+    # for position in fine_position_relative_peak_list:
+    #     index_t = int((position[0] - float(center_bins[0])) // 0.002)  # 向下取整
+    #     index_t1 = index_t+1
+    #     # p_label = find_closest_value(center_bins, 0.002, p_t)
+    #     p_label = center_bins[index_t]
+    #     p_label1 = center_bins[index_t1]
+    #     if abs(float(p_label) - p_t) <= abs(float(p_label1) - p_t):
+    #         peak = p_label
+    #     else:
+    #         peak = p_label1
+    #     if peak in peak_dict.keys():
+    #         fine_relative_peak_dict[peak].append((position[0], position[1]))
     peak_dict1 = {}
     for key in peak_dict.keys():
         peak_dict1[key] = np.mean(peak_dict[key])
@@ -1160,7 +1330,10 @@ def draw_distribution_for_ions(filtered_res, ion_relative_peak_distribution, dis
         else:
             n, bins, patches = plt.hist(tmp_peak, bins=t_bins, label=str(ion), align='mid',
                                         edgecolor="r", weights=[1./len(tmp_peak)]*len(tmp_peak), histtype='step')
+                
         center = (bins[:-1] + bins[1:]) / 2  # 计算每个bin的中心位置
+        # plt.plot(center, n, label=str(ion),
+        #          color=color_list[index], linestyle='--')
         t_n = [sum(n[:index+1]) for index in range(len(n))]
         n_bins_dict[ion] = {}
         n_bins_dict[ion]['y'] = t_n
@@ -1237,8 +1410,95 @@ def read_mgf(parameter_dict):
     return mass_spectra_dict
 
 
-def ion_type_determine(current_path, modification_list, modification_dict, mass_spectra_dict, blind_res, close_ion, ion_relative_mode, modification_site, ion_filter_mode, pchem_output_path):
-    pchem_cfg_path = os.path.join(current_path, 'pChem.cfg')
+# 离子类型学习
+def ion_type_determine(current_path, modification_list, modification_dict, parameter_dict):
+
+    pchem_cfg_path = os.path.join(current_path, 'pIon.cfg')
+    # parameter_dict = parameter_file_read(pchem_cfg_path)
+    print(parameter_dict)
+
+    # 质谱数据读取
+    mass_spectra_dict = {}
+    for msms_path in parameter_dict['msms_path']:
+
+        mgf_path = msms_path.split('=')[1].split('.')[0] + '.mgf'
+        cur_mass_spectra_dict = mgf_read(mgf_path)
+        mass_spectra_dict.update(cur_mass_spectra_dict)
+
+    # 读取盲搜得到的结果
+    blind_path = os.path.join(parameter_dict['output_path'], 'blind')
+    blind_res_path = os.path.join(blind_path, 'pFind-Filtered.spectra')
+    blind_res = blind_res_read(blind_res_path)
+
+    # 读取常见修饰的列表
+    common_modification_dict = common_dict_create(current_path)
+    # print(common_modification_dict)
+    position_list = []
+    peak_dict = []
+
+    # 修饰->中性丢失
+    mod2ion = {}
+    exist_ion_flag = True
+    ion_list = []
+
+    # 筛选有效的PSM
+    for modification in modification_list:
+        # pfind-filtered line
+        print('calculate the ion of ', modification)
+        mod = modification.split('_')[2]
+        int_mod = int(mod)
+        mod2ion[mod] = []
+        t_ion_list = []
+        filtered_res = PSM_filter(blind_res, modification)
+
+        # 确定报告每个未知修饰的离子，modification in modification_list
+        # t_position_list：前300个候选特征离子；
+        # t_peak_dict：每个特征离子的精确质量
+        t_position_list, t_peak_dict = feature_peak_determine(
+            mass_spectra_dict, filtered_res)
+        peak_dict.append(t_peak_dict)
+        position_list.append(t_position_list)
+
+        # total_ion_diff_list: 所有质量差组成的列表
+        total_ion_diff_counter, total_ion_diff_list, total_weight_ion_diff_list = ion_type_compute(
+            filtered_res, modification, modification_dict[modification], common_modification_dict, mass_spectra_dict)
+        # 画频率图
+        # freq_point_plot(total_ion_diff_counter, modification)
+        # print(total_ion_diff_counter)
+        # freq_line_plot(total_ion_diff_counter)
+        # freq_analysis(total_ion_diff_counter)
+
+        # 判断是否存在中性丢失
+        if int(total_ion_diff_counter.most_common()[0][0]) == 0:
+            exist_ion_flag = False
+
+        repeat_list = []
+        for ion_mass, _ in total_ion_diff_counter.most_common()[:10]:
+
+            # 是否引入信噪比过滤
+            if signal_noise_filter(ion_mass, total_ion_diff_counter) == False:
+                continue
+
+            accurate_ion_mass = accurate_ion_mass_computation(
+                ion_mass, total_ion_diff_list)
+            # weight_accurate_ion_mass = weight_accurate_ion_mass_computation(ion_mass, total_weight_ion_diff_list)
+            # print('average: ', accurate_ion_mass)
+            # print('weight: ', weight_accurate_ion_mass)
+            int_ion_mass = int(accurate_ion_mass)
+            if int_ion_mass not in repeat_list and int_mod != int_ion_mass:
+                mod2ion[mod].append(accurate_ion_mass)
+                t_ion_list.append(accurate_ion_mass)
+                repeat_list.append(int_ion_mass)
+        ion_list.append(t_ion_list)
+        # print(filtered_res)
+    # 特征离子发现
+    # print('Feature ion results')
+    # pair_list = feature_pair_find(position_list, peak_dict, parameter_dict['mass_of_diff_diff'])
+    return mod2ion, ion_list, exist_ion_flag
+
+
+def ion_type_determine1(current_path, modification_list, modification_dict, mass_spectra_dict, blind_res, close_ion, ion_relative_mode, modification_site, ion_filter_mode, pchem_output_path):
+    pchem_cfg_path = os.path.join(current_path, 'pIon.cfg')
     parameter_dict = parameter_file_read(pchem_cfg_path)
     print(parameter_dict)
 
@@ -1329,6 +1589,19 @@ def signal_noise_filter(ion_mass, total_ion_diff_counter, mass_range=50, thresho
     return signal2noise >= threshold
 
 
+# 利用轻重标记筛选中性丢失
+def ion_filter(ion_list, mass_diff):
+    refine_ion_list = [[], []]
+    for light_mass in ion_list[0]:
+        for heavy_mass in ion_list[1]:
+            diff = int(heavy_mass - light_mass)
+            if diff == mass_diff:
+                refine_ion_list[0].append(round(light_mass, 6))
+                refine_ion_list[1].append(round(heavy_mass, 6))
+            if len(refine_ion_list[0]) >= 3:
+                return refine_ion_list
+    return refine_ion_list
+
 
 # 筛选出没有修饰的PSM
 def without_mod_PSM_filter(current_path, blind_res, mass_spectra_dict, modification_dict, close_ion, ion_relative_mode, pchem_output_path, ion_filter_mode, modification_site):
@@ -1347,6 +1620,257 @@ def without_mod_PSM_filter(current_path, blind_res, mass_spectra_dict, modificat
     print('filter without-mod PSM cost time (s): ',
           round(end_time - start_time, 1))
     return without_mod_res, without_mod_position_list, without_mod_filtered_position_counter_list, without_mod_peak_dict, without_mod_fine_peak_dict, without_mod_fine_relative_peak_dict, ion_area_dict, n_bins_dict, without_mod_have_close_ion_scan_dict
+
+
+# 比较没有修饰的PSM和有修饰的PSM之间特征离子的差别
+def feature_ion_compare(current_path, modification_list, modification_dict, blind_res, mass_spectra_dict, close_ion, ion_relative_mode, pchem_output_path):
+    without_mod_res, without_mod_position_list, without_mod_filtered_position_counter_list, without_mod_peak_dict, without_mod_fine_peak_dict, without_mod_fine_relative_peak_dict, ion_area_dict, n_bins_dict = without_mod_PSM_filter(
+        current_path, blind_res, mass_spectra_dict, modification_dict, close_ion)
+    ion_dict, mod_have_close_ion_scan_dict = ion_type_determine1(current_path, modification_list,
+                                                                 modification_dict, mass_spectra_dict, blind_res, ion_relative_mode, pchem_output_path)
+
+    # 差别1：比较无修饰和全体有修饰的谱图之间，前300候选离子（两位小数）对应的mass count的百分比来确定p-value
+    without_mod_acc_peak_list = []
+    for key in without_mod_peak_dict.keys():
+        without_mod_acc_peak_list.append(without_mod_peak_dict[key])
+
+    all_ion_acc_peak_list = []
+    all_ion_acc_peak_dict = {}
+    for mod in modification_list:
+        for key in ion_dict[mod]['t_fine_relative_peak_dict'].keys():
+            all_ion_acc_peak_dict[key] = []
+    for mod in modification_list:
+        for key in ion_dict[mod]['t_fine_relative_peak_dict'].keys():
+            t_ion_acc_peak_list = []
+            for i in ion_dict[mod]['t_fine_relative_peak_dict'][key]:
+                t_ion_acc_peak_list.append(i[0])
+            all_ion_acc_peak_dict[key] += t_ion_acc_peak_list
+    sorted(all_ion_acc_peak_dict.items(),
+           key=lambda item: len(item[1]), reverse=True)
+    for i in all_ion_acc_peak_dict.keys():
+        all_ion_acc_peak_list.append(np.mean(all_ion_acc_peak_dict[i]))
+
+    all_ion_acc_peak_counter = {}
+    for i in all_ion_acc_peak_dict.keys():
+        c = dict(Counter(all_ion_acc_peak_dict[i]))
+        all_ion_acc_peak_counter[i] = c
+
+    # draw1(all_ion_acc_peak_counter)
+
+    all_ion_peak_counter = {}
+    for mod in modification_list:
+        for item in ion_dict[mod]['t_position_counter_list']:
+            all_ion_peak_counter[item[0]] = 0
+    for mod in modification_list:
+        for item in ion_dict[mod]['t_position_counter_list']:
+            all_ion_peak_counter[item[0]] += item[1]
+
+    without_mod_peak_counter = {}
+    for item in without_mod_filtered_position_counter_list:
+        without_mod_peak_counter[item[0]] = item[1]
+
+    # draw2(all_ion_peak_counter)
+    # draw3(without_mod_filtered_position_counter_list)
+
+    # data1 = [0.873, 2.817, 0.121, -0.945, -0.055, -1.436, 0.360, -1.478, -1.637, -1.869]
+    # data2 = [1.142, -0.432, -0.938, -0.729, -0.846, -0.157, 0.500, 1.183, -1.075, -0.169,]
+
+    # data_mod = [key for key in all_ion_peak_counter.keys() for i in range(all_ion_peak_counter[key])]
+    # data_without_mod = [val[0] for val in without_mod_filtered_position_counter_list for i in range(val[1])]
+
+    # encode，将有修饰和无修饰的encode成一种向量，向量下标为sim_mass,向量里的值为计数百分比
+
+    merge_encode_list = list(set(without_mod_position_list).union(
+        set([key for key in all_ion_peak_counter.keys()])))
+    without_mod_encode_count = []
+    mod_encode_count = []
+    for key in merge_encode_list:
+        without_mod_encode_count.append(0)
+        mod_encode_count.append(0)
+    for i in range(len(merge_encode_list)):
+        if merge_encode_list[i] in all_ion_peak_counter.keys():
+            mod_encode_count[i] = all_ion_peak_counter[merge_encode_list[i]]
+        else:
+            mod_encode_count[i] = 0
+        if merge_encode_list[i] in without_mod_peak_counter.keys():
+            without_mod_encode_count[i] = without_mod_peak_counter[merge_encode_list[i]]
+        else:
+            without_mod_encode_count[i] = 0
+
+    data_mod1 = [value/max(mod_encode_count) for value in mod_encode_count]
+    data_without_mod1 = [value/max(without_mod_encode_count)
+                         for value in without_mod_encode_count]
+
+    data_mod = [value/sum(mod_encode_count) for value in mod_encode_count]
+    data_without_mod = [value/sum(without_mod_encode_count)
+                        for value in without_mod_encode_count]
+    # 差别1：比较无修饰和全体有修饰的谱图之间，前300候选离子（两位小数）对应的mass count的百分比来确定p-value
+    stat1, p_value_for_compare_count1 = mannwhitneyu(
+        data_mod1, data_without_mod1)
+    stat, p_value_for_compare_count = mannwhitneyu(data_mod, data_without_mod)
+
+    # 差别2：比较无修饰和全体有修饰的谱图之间，前300候选离子（两位小数）对应的所有谱峰差别来确定p-value
+    all_ion_relative_peak = {}
+    all_ion_relative_peak_result = {}
+    for mod in modification_list:
+        for key in ion_dict[mod]['t_fine_relative_peak_dict'].keys():
+            all_ion_relative_peak[str(key)] = []
+            all_ion_relative_peak_result[str(key)] = {}
+            all_ion_relative_peak_result[str(key)]['mean'] = 0
+            all_ion_relative_peak_result[str(key)]['median'] = 0
+    for mod in modification_list:
+        for key in ion_dict[mod]['t_fine_relative_peak_dict'].keys():
+            for item in ion_dict[mod]['t_fine_relative_peak_dict'][key]:
+                all_ion_relative_peak[str(key)].append(round(item[1], 2))
+            all_ion_relative_peak_result[str(
+                key)]['mean'] += np.mean(all_ion_relative_peak[str(key)])
+            all_ion_relative_peak_result[str(
+                key)]['median'] += np.median(all_ion_relative_peak[str(key)])
+
+    without_mod_relative_peak = {}
+    without_mod_relative_peak_result = {}
+    for key in without_mod_fine_relative_peak_dict.keys():
+        without_mod_relative_peak[str(key)] = []
+        without_mod_relative_peak_result[str(key)] = {}
+        without_mod_relative_peak_result[str(key)]['mean'] = 0
+        without_mod_relative_peak_result[str(key)]['median'] = 0
+    for key in without_mod_fine_relative_peak_dict.keys():
+        for item in without_mod_fine_relative_peak_dict[key]:
+            without_mod_relative_peak[str(key)].append(round(item[1], 2))
+        without_mod_relative_peak_result[str(
+            key)]['mean'] += np.mean(without_mod_relative_peak[str(key)])
+        without_mod_relative_peak_result[str(
+            key)]['median'] += np.median(without_mod_relative_peak[str(key)])
+
+    without_mod_encode_relative_peak = []
+    mod_encode_relative_peak = []
+    for key in merge_encode_list:
+        without_mod_encode_relative_peak.append(0)
+        mod_encode_relative_peak.append(0)
+    for i in range(len(merge_encode_list)):
+        if str(merge_encode_list[i]) in all_ion_relative_peak_result.keys():
+            mod_encode_relative_peak[i] = all_ion_relative_peak_result[str(
+                merge_encode_list[i])]['mean']
+        else:
+            mod_encode_relative_peak[i] = 0
+        if str(merge_encode_list[i]) in without_mod_relative_peak_result.keys():
+            without_mod_encode_relative_peak[i] = without_mod_relative_peak_result[str(
+                merge_encode_list[i])]['mean']
+        else:
+            without_mod_encode_relative_peak[i] = 0
+
+    stat3, p_value_for_compare_relative_peak = mannwhitneyu(
+        mod_encode_relative_peak, without_mod_encode_relative_peak)
+
+    mod_encode_relative_peak1 = [((i - np.min(mod_encode_relative_peak)) / (np.max(
+        mod_encode_relative_peak) - np.min(mod_encode_relative_peak))) for i in mod_encode_relative_peak]
+    without_mod_encode_relative_peak1 = [((i - np.min(without_mod_encode_relative_peak)) / (np.max(
+        without_mod_encode_relative_peak) - np.min(without_mod_encode_relative_peak))) for i in without_mod_encode_relative_peak]
+
+    stat4, p_value_for_compare_relative_peak1 = mannwhitneyu(
+        mod_encode_relative_peak1, without_mod_encode_relative_peak1)
+
+    delta_relative_peak1 = [(mod_encode_relative_peak1[i] - without_mod_encode_relative_peak1[i])
+                            for i in range(len(merge_encode_list))]
+    delta_relative_peak = [(mod_encode_relative_peak[i] - without_mod_encode_relative_peak[i])
+                           for i in range(len(merge_encode_list))]
+    delta_percent_relative_peak = [0]*len(merge_encode_list)
+    for i in range(len(merge_encode_list)):
+        if without_mod_encode_relative_peak1[i] > 0:
+            # delta_percent_relative_peak[i] = float((mod_encode_relative_peak1[i] - without_mod_encode_relative_peak1[i])/(without_mod_encode_relative_peak1[i]))
+            delta_percent_relative_peak[i] = float(
+                (mod_encode_relative_peak[i] - without_mod_encode_relative_peak[i])/(without_mod_encode_relative_peak[i]))
+    t_max_delta_percent = max(delta_percent_relative_peak)+1
+    for i in range(len(merge_encode_list)):
+        if without_mod_encode_relative_peak1[i] == 0:
+            delta_percent_relative_peak[i] = t_max_delta_percent
+
+    delta_relative_peak_dict = {}
+    delta_percent_relative_peak_dict = {}
+    for i in range(len(merge_encode_list)):
+        delta_relative_peak_dict[merge_encode_list[i]] = delta_relative_peak[i]
+        delta_percent_relative_peak_dict[merge_encode_list[i]
+                                         ] = delta_percent_relative_peak[i]
+
+    plot_class_list = []
+    for i in range(len(merge_encode_list)):
+        if without_mod_encode_relative_peak1[i] == 0:
+            plot_class_list.append(0)
+        else:
+            plot_class_list.append(1)
+
+    draw4(merge_encode_list, delta_relative_peak, plot_class_list)
+    draw4(merge_encode_list, delta_percent_relative_peak, plot_class_list)
+    draw5(merge_encode_list, delta_relative_peak, plot_class_list)
+    draw5(merge_encode_list, delta_percent_relative_peak, plot_class_list)
+    return p_value_for_compare_count, p_value_for_compare_count1, p_value_for_compare_relative_peak, p_value_for_compare_relative_peak1, delta_relative_peak_dict
+
+    # 差别3：从300个候选特征离子分别和无修饰再进行筛选，比较每个离子的p-value，选择p最小的，先排序看看
+
+
+def draw5(merge_encode_list, delta_relative_peak, plot_class_list):
+    # 定义散点图的标题,标题的大小和颜色等
+    plt.title('delta ion relative peak', fontsize=20, color='blue')
+    # 定义坐标轴
+    plt.xlabel('ion m/z', fontsize=15, color='black')
+    plt.ylabel('ion delta m/z', fontsize=15, color='black')
+
+    index = list(range(0, len(merge_encode_list)))
+    # 对于x刻度的设置
+    # 横坐标刻度，也可以进行设置文字大小,如：fontsize=15，对文字进行旋转，如：rotation=30
+    plt.xticks(index, rotation=30, fontsize=5)
+
+    # 绘制散点图
+    col = []
+    colors = ['#FF0000', '#FFA500']
+
+    index1 = [i for i in range(len(plot_class_list))
+              if plot_class_list[i] == 0]
+    index2 = [i for i in range(len(plot_class_list))
+              if plot_class_list[i] == 1]
+    y1 = [delta_relative_peak[i] for i in index1]
+    y2 = [delta_relative_peak[i] for i in index2]
+    # plt.scatter(index1, delta_relative_peak,color='r', s=20)
+    plt.scatter(index1, y1, color='r', s=20)
+    plt.scatter(index2, y2, color='g', s=20)
+    plt.plot(index, np.array([0]*len(merge_encode_list)), c='b', ls='--')
+    # for x,y in zip(index,delta_relative_peak):
+    #     plt.text(x,y,'%.2f' %merge_encode_list[x] ,fontdict={'fontsize':10})
+    plt.show()
+    plt.close()
+
+
+def draw4(merge_encode_list, delta_relative_peak, plot_class_list):
+    # 定义散点图的标题,标题的大小和颜色等
+    plt.title('delta ion relative peak', fontsize=20, color='blue')
+    # 定义坐标轴
+    plt.xlabel('ion m/z', fontsize=15, color='black')
+    plt.ylabel('ion delta m/z', fontsize=15, color='black')
+
+    index = list(range(0, len(merge_encode_list)))
+    # 对于x刻度的设置
+    # 横坐标刻度，也可以进行设置文字大小,如：fontsize=15，对文字进行旋转，如：rotation=30
+    plt.xticks(index, rotation=30, fontsize=5)
+
+    # 绘制散点图
+    col = []
+    colors = ['#FF0000', '#FFA500']
+
+    index1 = [i for i in range(len(plot_class_list))
+              if plot_class_list[i] == 0]
+    index2 = [i for i in range(len(plot_class_list))
+              if plot_class_list[i] == 1]
+    y1 = [delta_relative_peak[i] for i in index1]
+    y2 = [delta_relative_peak[i] for i in index2]
+    # plt.scatter(index1, delta_relative_peak,color='r', s=20)
+    plt.scatter(index1, y1, color='r', s=20)
+    plt.scatter(index2, y2, color='g', s=20)
+    plt.plot(index, np.array([0]*len(merge_encode_list)), c='b', ls='--')
+    for x, y in zip(index, delta_relative_peak):
+        plt.text(x, y, '%.2f' %
+                 merge_encode_list[x], fontdict={'fontsize': 10})
+    plt.show()
+    plt.close()
 
 
 def get_modification_from_result(pchem_summary_path):
@@ -1423,6 +1947,42 @@ def deal_without_mod_psm(pchem_output_path, current_path, ion_type, modification
     return ion_area_dict, n_bins_dict, without_mod_tuple, without_mod_have_close_ion_scan_dict
 
 
+def deal_with_mod_psm(mod_ion_result_path, ion_dict, modification_list, modification_PSM):
+    with open(mod_ion_result_path, 'w', encoding='utf-8') as f1:
+        for i in tqdm(ion_dict.keys()):
+            f1.write("Modification info for " + i + ":(PSM = {}) ".format(
+                modification_PSM[i]) + "(filtered PSM = {})".format(ion_dict[i]['mod_psm']) + '(neighbor filtered PSM = {})'.format(len([x for x in ion_dict[i]['reserve_dict'].keys() if ion_dict[i]['reserve_dict'][x] == True])) + "\n")
+            # f1.write("Modification info for " + i  + ":(filtered PSM = {})".format(ion_dict[i]['mod_psm'])+ "\n")
+            f1.write("Top 300 characteristic ions in the " +
+                     i + " spectra:" + "\n")
+            f1.write("Rank" + '\t' + "ion type" + '\t' + 'ion count' +
+                     '\t' + 'ion accuracy' + '\t' + 'ion relative peak' + '\n')
+            mod_relative_peak = {}
+            mod_relative_peak_result = {}
+            for key in ion_dict[i]['t_fine_relative_peak_dict'].keys():
+                mod_relative_peak[str(key)] = []
+                mod_relative_peak_result[str(key)] = {}
+                mod_relative_peak_result[str(key)]['mean'] = 0
+                mod_relative_peak_result[str(key)]['median'] = 0
+            for key in ion_dict[i]['t_fine_relative_peak_dict'].keys():
+                for item in ion_dict[i]['t_fine_relative_peak_dict'][key]:
+                    mod_relative_peak[str(key)].append(round(item[1], 6))
+
+                mod_relative_peak_result[str(
+                    key)]['mean'] += np.sum(mod_relative_peak[str(key)])/ion_dict[i]['mod_psm']
+
+            mod_tuple = []
+            for index, j in enumerate(ion_dict[i]['t_position_counter_list']):
+                mod_tuple.append((j[0], j[1], mod_relative_peak_result[str(
+                    j[0])]['mean'], ion_dict[i]['t_peak_dict'][j[0]]))
+            # mod_tuple.sort(key=lambda word:word[2], reverse=True)
+            mod_tuple.sort(key=lambda word: word[1], reverse=True)
+            mod_tuple.sort(key=lambda word: word[2], reverse=True)
+            for index, j in enumerate(mod_tuple):
+                f1.write(str(index+1) + '\t' + str(j[0]) + '\t' + str(j[1]) + '\t' + str(
+                    round(ion_dict[i]['t_peak_dict'][j[0]], 6)) + '\t' + str(round(j[2], 6)) + '\n')
+            f1.write("\n")
+
 
 def close_ion_learning(pchem_output_path, current_path, ion_type, modification_list, modification_dict, blind_res, mass_spectra_dict, modification_PSM, modification_site, pchem_summary_path, ion_relative_mode, ion_rank_threshold, ion_filter_mode, ion_filter_ratio):
     without_mod_ion_area_dict, without_mod_n_bins_dict, without_mod_tuple, without_mod_have_close_ion_scan_dict = deal_without_mod_psm(pchem_output_path, current_path, ion_type, modification_list, modification_dict, blind_res,
@@ -1430,29 +1990,32 @@ def close_ion_learning(pchem_output_path, current_path, ion_type, modification_l
 
     mod_ion_result_path = os.path.join(
         pchem_output_path, 'pChem_mod_ion_result.summary')
-    ion_dict, mod_have_close_ion_scan_dict = ion_type_determine(current_path, modification_list, modification_dict,
+    ion_dict, mod_have_close_ion_scan_dict = ion_type_determine1(current_path, modification_list, modification_dict,
                                                                  mass_spectra_dict, blind_res, ion_type, ion_relative_mode, modification_site, ion_filter_mode, pchem_output_path)
 
-    # if int(ion_filter_mode) == 1:
-    #     pchem_summary_path1, mod_filter = modification_filter_mode1(
-    #         mod_ion_result_path, ion_dict, modification_list, ion_filter_mode, modification_PSM, ion_type)
-    # elif int(ion_filter_mode) == 2:
-    #     pchem_summary_path1, mod_filter = modification_filter_mode2(
-    #         without_mod_n_bins_dict, without_mod_ion_area_dict, mod_ion_result_path, ion_dict, modification_list, ion_filter_mode, without_mod_tuple, ion_type, modification_PSM, pchem_output_path, pchem_summary_path, ion_filter_ratio)
-    pchem_summary_path1, mod_filter = modification_filter_mode(
+    if int(ion_filter_mode) == 1:
+        pchem_summary_path1, mod_filter = modification_filter_mode1(
+            mod_ion_result_path, ion_dict, modification_list, ion_filter_mode, modification_PSM, ion_type)
+    elif int(ion_filter_mode) == 2:
+        pchem_summary_path1, mod_filter = modification_filter_mode2(
             without_mod_n_bins_dict, without_mod_ion_area_dict, mod_ion_result_path, ion_dict, modification_list, ion_filter_mode, without_mod_tuple, ion_type, modification_PSM, pchem_output_path, pchem_summary_path, ion_filter_ratio)
-    
     # return pchem_summary_path1, ion_dict, mod_filter
     return pchem_summary_path1
 
 
-def modification_filter_mode(without_mod_n_bins_dict, without_mod_ion_area_dict, mod_ion_result_path, ion_dict, modification_list, ion_filter_mode, without_mod_tuple, close_ion, modification_PSM, pchem_output_path, pchem_summary_path, ion_filter_ratio):
+def modification_filter_mode2(without_mod_n_bins_dict, without_mod_ion_area_dict, mod_ion_result_path, ion_dict, modification_list, ion_filter_mode, without_mod_tuple, close_ion, modification_PSM, pchem_output_path, pchem_summary_path, ion_filter_ratio):
     if round(float(close_ion), 3) in without_mod_ion_area_dict.keys():
         without_mod_close_ion_rank = sorted([without_mod_ion_area_dict[i] for i in without_mod_ion_area_dict.keys()]).index(
             without_mod_ion_area_dict[round(float(close_ion), 3)])
     else:
         without_mod_close_ion_rank = -1
 
+    # w_ion_rank = 0
+    # for index, i in enumerate(without_mod_tuple):
+    #     if str(round(float(ion_type), 3)) == i[0]:
+    #         w_ion_rank = index
+    # mod_tuple, mod_filter = write_mod_ion_file(
+    #     mod_ion_result_path, modification_list, ion_dict, without_mod_close_ion_rank+1)
     mod_filter = write_mod_ion_file(
         mod_ion_result_path, modification_list, ion_dict, 20, modification_PSM, close_ion)
 
@@ -1559,6 +2122,17 @@ def write_mod_ion_file(mod_ion_result_path, modification_list, ion_dict, ion_ran
                 mod_filter.append(i)
     return mod_filter
 
+
+def modification_filter_mode1(mod_ion_result_path, ion_dict, modification_list, ion_filter_mode, modification_PSM, close_ion):
+    mod_filter = []
+    mod_filter = write_mod_ion_file(
+        mod_ion_result_path, modification_list, ion_dict, ion_rank_threshold, modification_PSM, close_ion)
+    print(mod_filter)
+    mod_final_filter, pchem_summary_path1 = filter_write_mod(
+        mod_filter, pchem_summary_path, ion_dict, ion_filter_mode, pchem_output_path)
+    return pchem_summary_path1, mod_filter
+
+
 def filter_write_mod(mod_filter, pchem_summary_path, ion_dict, ion_filter_mode, pchem_output_path):
     with open(pchem_summary_path, 'r') as f2:
         lines = f2.readlines()
@@ -1601,8 +2175,249 @@ def filter_write_mod(mod_filter, pchem_summary_path, ion_dict, ion_filter_mode, 
 
         f3.write('\n')
 
+    # file_path = pchem_summary_path1
+    # column_to_sort = 4  # 替换为要排序的列
+    # # 读取文件内容
+    # with open(pchem_summary_path1, 'r') as file:
+    #     lines = file.readlines()
+
+    # line_0 = lines[0]
+    # lines = [line for line in lines[1:] if line != "\n"]
+
+    # # 对内容按psm进行排序
+    # lines.sort(key=lambda line: int(
+    #     line.split()[column_to_sort]), reverse=True)
+
+    # new_lines = []
+    # for line in lines:
+    #     parts = line.strip().split('\t')  # 使用适当的分隔符，这里假设是制表符
+    #     if 0 <= 5 < len(parts):
+    #         del parts[5]
+    #     new_line = '\t'.join(parts)  # 重组行，使用适当的分隔符
+    #     new_lines.append(new_line)
+
+    # # 将排序后的内容写回原文件
+    # with open(file_path, 'w') as file:
+    #     file.writelines(lines)
 
     return mod_final_filter, pchem_summary_path1
+
+
+def modify_p_summary(pchem_summary_path1, p_value_threshold):
+    if p_value_threshold == 1:
+        return
+    else:
+        with open(pchem_summary_path1, 'r', encoding='utf-8') as f:
+            lines = f.readlines()
+        lines_0 = lines[0]
+        result = []
+        result.append(lines_0)
+        for line in lines[1:]:
+            if line == '\n':
+                break
+            line_res = line.split("\t")
+            pos0_p = float(line_res[3].split("|")[-1])
+            if pos0_p > p_value_threshold:
+                continue
+            else:
+                pos_list = line_res[4].split(";")[:-1]
+                pos_list = [i[2:] if i[0] == " " else i[:] for i in pos_list]
+                result_list = []
+                line_res_4 = ""
+                for index, i in enumerate(pos_list):
+                    l = i.split(", ")
+                    pos_p = l[-1][:-1]
+                    if float(pos_p) <= p_value_threshold:
+                        result_list.append(index)
+                for i in result_list:
+                    line_res_4 += pos_list[i]
+                    line_res_4 += ";  "
+                line_res[4] = line_res_4
+                result.append("\t".join(line_res))
+        with open(pchem_summary_path1, 'w', encoding='utf-8') as f3:
+            for index, i in enumerate(result):
+                if index == 0:
+                    t = i
+                else:
+                    line_res = i.split("\t")
+                    line_res[0] = str(index)
+                    t = "\t".join(line_res)
+                f3.write(t)
+            f3.write('\n')
+
+
+def bisect_left1(a, x, lo=0, hi=None):
+    hi = len(a)
+    while lo < hi:
+        mid = (lo+hi)//2
+        if a[mid] < x:
+            lo = mid+1
+        else:
+            hi = mid
+    return lo
+
+
+def take_closest(myList, myNumber):
+    res_list = [float(i.split(" ")[0]) for i in myList]
+    # for i in myList:
+    #     res_list.append(float(i.split(" ")[0]))
+    pos = bisect_left1(res_list, myNumber)
+    if pos == 0:
+        return myList[0]
+    if pos == len(myList):
+        return myList[-1]
+    before = res_list[pos - 1]
+    after = res_list[pos]
+    if after - myNumber < myNumber - before:
+        return myList[pos]
+    else:
+        return myList[pos - 1]
+
+
+@jit
+def calc_tmz(t_ms2_charge, t_exp_MH, pm):
+    t_mz = round(((t_ms2_charge-1) *
+                  pm+t_exp_MH)/t_ms2_charge, 6)
+    return t_mz
+
+
+def get_ms2_ms1_scan_dict(ms2_path, ms1_path, blind_res):
+    ms2_ms1_scan_dict = {}
+    blind_res_dict = {}
+    blind_res_list = []
+    for line in tqdm(blind_res):
+        t_line = line.split("\t")
+
+        t_ms2_name = t_line[0]
+        t_ms2_scan = t_line[1]
+        t_exp_MH = t_line[2]
+        t_ms2_charge = t_line[3]
+        t_mz = calc_tmz(int(t_ms2_charge), float(t_exp_MH), element_dict['Pm'])
+        blind_res_dict[t_ms2_name] = {}
+        blind_res_dict[t_ms2_name]['ms2_scan'] = int(t_ms2_scan)
+        blind_res_dict[t_ms2_name]['mz'] = t_mz
+
+    return ms2_ms1_scan_dict, blind_res_dict
+
+
+def get_ion_common_dict(cfg_path):
+    with open(cfg_path, 'r', encoding='utf-8') as f:
+        lines = f.readlines()
+    for index, line in enumerate(lines):
+        if "{" in line:
+            start_id = index
+        if "}" in line:
+            end_id = index
+    ion_common = lines[start_id+1:end_id]
+    dict_str = "{"
+    for i in ion_common:
+        if "#" not in i:
+            dict_str += i[:-1]
+    dict_str += "}"
+    ion_common = eval(dict_str)
+    print(ion_common)
+    return ion_common
+
+
+def delete_psite_temp_file(current_path):
+    psite_temp_file_list = glob.glob(
+        os.path.join(current_path, "psite_PFIND_*.txt"))
+
+    for i in psite_temp_file_list:
+        os.remove(i)
+
+
+def modification_analyse(pchem_summary_path2, current_path):
+    modification_path = os.path.join(
+        current_path, 'bin/template/modification_analysis.ini')
+    with open(modification_path, 'r', encoding='utf-8') as f:
+        lines = f.readlines()
+    i = 1
+    common_dict = {}
+    while i < len(lines):
+        if len(lines[i]) < 2:
+            break
+        mod_name = lines[i].split()[0]
+        eq_idx = mod_name.find('=')
+        mod_name = mod_name[eq_idx+1:]
+        mod_mass = lines[i+1].split()[2]
+        common_dict[mod_name] = float(mod_mass)
+        i += 2
+
+    return common_dict
+
+# 绘制热点图
+
+
+def heat_map_plot(current_path, filter_mod, mod_static_dict, mod_number_dict, new_mod_number_dict, p_disable_pos):
+    y_stick = ["N-SIDE", "C-SIDE", "A", "C", "D", "E", "F", "G", "H",
+               "I", "K", "L", "M", "N", "P", "Q", "R", "S", "T", "V", "W", "Y"]
+    y_dict = {}
+    for i in range(len(y_stick)):
+        y_dict[y_stick[i]] = i
+
+    x_stick = filter_mod
+    mod_map = {}
+
+    for i in range(len(x_stick)):
+        diable_pos_list = p_disable_pos[x_stick[i]]
+        # print('list:', diable_pos_list, x_stick[i])
+
+        freq_list = [0.0] * len(y_stick)
+        # local_list = mod_static_dict[x_stick[i]].most_common()
+        local_list = mod_static_dict[x_stick[i]]
+        Top1_site = local_list[0][0]
+        residual_pro = 0.0
+        factor = (new_mod_number_dict[x_stick[i]] - mod_number_dict[x_stick[i]] + local_list[0]
+                  [1]) * mod_number_dict[x_stick[i]] / new_mod_number_dict[x_stick[i]] / local_list[0][1]
+
+        if Top1_site == 'N-SIDE' or Top1_site == 'C-SIDE':
+            parent_num = 0
+            for j in range(1, len(local_list)):
+                parent_num += local_list[j][1]
+        else:
+            parent_num = new_mod_number_dict[x_stick[i]]
+
+        for j in range(1, len(local_list)):
+            cur_position = local_list[j][0]
+            if cur_position not in y_stick:
+                continue
+            cur_freq = round(local_list[j][1]/parent_num, 3)
+            if cur_position == 'N-SIDE' or cur_position == 'C-SIDE':
+                cur_freq = cur_freq * parent_num * \
+                    factor / mod_number_dict[x_stick[i]]
+
+            # print(cur_position)
+            if cur_position not in diable_pos_list:
+                freq_list[y_dict[cur_position]] = cur_freq
+            # else:
+            #    print('filter:', cur_position)
+
+            if cur_position == 'N-SIDE' or cur_position == 'C-SIDE':
+                continue
+            residual_pro += cur_freq
+
+        if Top1_site == 'N-SIDE' or Top1_site == 'C-SIDE':
+            Top1_pro = round(local_list[0][1] / parent_num, 3)
+        else:
+            Top1_pro = round(1 - residual_pro, 3)
+        if Top1_site not in y_dict.keys():
+            Top1_site = 'C'
+        freq_list[y_dict[Top1_site]] = Top1_pro
+
+        mod_map[x_stick[i]] = freq_list
+
+    pd_mod_map = pd.DataFrame(mod_map, index=y_stick, columns=x_stick)
+    # print(pd_mod_map)
+    # ax = sns.heatmap(pd_mod_map, vmin=0.0, vmax=1.0, cmap='YlGnBu', annot=True, annot_kws={"size":4})
+    ax = sns.heatmap(pd_mod_map, vmin=0.0, vmax=1.0, cmap='YlGnBu')
+    plt.ylabel('amino acid selectivity')
+    plt.xlabel('modifications')
+    png_path = os.path.join(current_path, 'heat_map.pdf')
+    # plt.show()
+    plt.savefig(png_path, dpi=200, bbox_inches='tight')
+    plt.close()
+
 
 def heatmap_ion(pchem_output_path, pchem_summary_path2):
     with open(pchem_summary_path2, 'r', encoding='utf-8') as f:
@@ -1641,3 +2456,96 @@ def heatmap_ion(pchem_output_path, pchem_summary_path2):
     plt.close()
     return True
 
+
+if __name__ == "__main__":
+    current_path = os.getcwd()
+    cfg_path = os.path.join(current_path, 'pChem-ion.cfg')
+    ion_common_dict = get_ion_common_dict(cfg_path)
+    parameter_dict_ion = parameter_file_read_ion(cfg_path)
+    blind_res_path = os.path.join(
+        parameter_dict_ion['output_path'], "source/blind/pFind-Filtered.spectra")
+    blind_res = blind_res_read(blind_res_path)
+    pp_path = os.path.join(parameter_dict_ion['output_path'], "source/pParse")
+    mgf_path_list = glob.glob(os.path.join(pp_path, "*.mgf"))
+    ms2_path_list = glob.glob(os.path.join(pp_path, "*.ms2"))
+    ms1_path_list = glob.glob(os.path.join(pp_path, "*.ms1"))
+    parameter_dict_ion['ion_relative_mode'] = 1
+    blind_res_raw_dict = {}
+    mass_spectra_dict = {}
+    for i in range(len(mgf_path_list)):
+        mgf_path = mgf_path_list[i]
+        ms2_path = ms2_path_list[i]
+        ms1_path = ms1_path_list[i]
+        # blind_res 按名称分类
+        t_name = mgf_path.split(
+            "\\")[-1].split(".")[0][:mgf_path.split("\\")[-1].split(".")[0].rfind("_")]
+        blind_res_raw_dict[t_name] = []
+        for line in blind_res:
+            if t_name in line:
+                blind_res_raw_dict[t_name].append(line)
+
+        ms2_ms1_scan_dict, blind_res_dict = get_ms2_ms1_scan_dict(
+            ms2_path, ms1_path, blind_res_raw_dict[t_name])
+
+        start_time = time.time()
+
+        mass_spectra_dict_tmp = mgf_read_for_ion_pfind_filter2(
+            mgf_path, blind_res_raw_dict[t_name])
+        mass_spectra_dict.update(mass_spectra_dict_tmp)
+        end_time = time.time()
+        # print("reading mgf file cost time (s): ",
+        #       round(end_time - start_time, 1))
+
+    file1 = open(os.path.join(
+        parameter_dict_ion['output_path'], "reporting_summary/pChem.summary"), "r")
+    file2 = open(os.path.join(
+        parameter_dict_ion['output_path'], "reporting_summary/pChem1.summary"), "w")
+    s = file1.read()
+    w = file2.write(s)
+    file1.close()
+    file2.close()
+
+    pchem_summary_path = os.path.join(
+        parameter_dict_ion['output_path'], "reporting_summary/pChem1.summary")
+    p_value_threshold = float(parameter_dict_ion['p_value_threshold'])
+    modify_p_summary(pchem_summary_path, 1)
+
+    modification_list, modification_dict, modification_PSM, modification_site = get_modification_from_result(
+        pchem_summary_path)
+    pchem_output_path = os.path.join(
+        parameter_dict_ion['output_path'], "reporting_summary")
+
+    ion_type = parameter_dict_ion['ion_type']
+    ion_relative_mode = int(parameter_dict_ion['ion_relative_mode'])
+    ion_rank_threshold = int(parameter_dict_ion['ion_rank_threshold'])
+    ion_filter_mode = int(parameter_dict_ion['ion_filter_mode'])
+    # pchem_summary_path1, ion_dict, mod_filter = close_ion_learning(pchem_output_path, current_path, ion_type, modification_list, modification_dict,
+    #                                                                blind_res, mass_spectra_dict, modification_PSM, modification_site, pchem_summary_path, ion_relative_mode, ion_rank_threshold, ion_filter_mode)
+    pchem_summary_path1 = close_ion_learning(pchem_output_path, current_path, ion_type, modification_list, modification_dict,
+                                             blind_res, mass_spectra_dict, modification_PSM, modification_site, pchem_summary_path, ion_relative_mode, ion_rank_threshold, ion_filter_mode)
+    if parameter_dict_ion['plabel_run'] == 'True':
+        spectra_dict, modification_dict = plabel_run1(current_path)
+    delete_psite_temp_file(current_path)
+    pchem_summary_path2 = os.path.join(
+        pchem_output_path, 'pChem_ion_filter_site_mode{}.summary'.format(ion_filter_mode))
+    file3 = open(pchem_summary_path1, "r")
+    file4 = open(pchem_summary_path2, "w")
+    s = file3.read()
+    w = file4.write(s)
+    file3.close()
+    file4.close()
+    modify_p_summary(pchem_summary_path2, p_value_threshold)
+    heat_map_draw = heatmap_ion(pchem_output_path, pchem_summary_path1)
+    # 解析靶标蛋白
+    pchem_summary_path = pchem_summary_path2
+    summary_modification_dict = mod_summary(pchem_summary_path)
+    pchem_cfg_path = os.path.join(current_path, 'pIon.cfg')
+    parameter_dict = parameter_file_read(pchem_cfg_path)
+    fasta_path = parameter_dict["fasta_path"]
+    # filtered_spectra_path = r"G:\pChem_ion-2023-4\pChem-main\result_0705\Fusion3_YangJing_HJX_UY_10_WIN0-7_20230630_F1_R1\source\blind\pFind-Filtered.spectra"
+    # fasta_path = r"G:\pChem_ion-2023-4\pChem-main\Protein_seq_database\Homo_sapiens_uniprot_canonical_20395_entries_20210516.fasta"
+    protein_sq_mod_dict, protein_fasta_dict = read_filtered_spectra(
+        blind_res_path, summary_modification_dict, fasta_path)
+    target_protein_file_generate(
+        protein_sq_mod_dict, protein_fasta_dict, pchem_output_path)
+    os.system("pause")

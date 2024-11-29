@@ -21,6 +21,8 @@ proton_mass = element_dict['Pm']
 # ion_common = ion_common_dict
 
 # 存放谱图的类
+
+
 class MassSpectrum:
     def __init__(self, charge, pepmass, peak_list):
         self.charge = charge
