@@ -19,6 +19,10 @@ For python version:
 - Python 3
 - matplotlib
 - pandas
+- numpy
+- scipy
+- seaborn
+- tqdm
 
 ## 4. Fast Usage
 
