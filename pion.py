@@ -3,7 +3,7 @@ Email: pengyaping21@mails.ucas.ac.cn
 Author: pengyaping21
 LastEditors: pengyaping21
 Date: 2024-11-29 14:08:21
-LastEditTime: 2024-11-29 15:08:02
+LastEditTime: 2024-11-29 15:29:05
 FilePath: \code1\pIon\pion.py
 Description: Do not edit
 '''
@@ -20,6 +20,10 @@ import glob
 
 
 def run():
+    """
+    Main function to execute the pIon pipeline. This function handles the setup, file checks,
+    execution of blind search, close search (if applicable), and ion labeling. 
+    """
     current_path = os.getcwd()
     print('Welcome to use pChem! (version 2.1)')
 
@@ -100,14 +104,19 @@ def run():
 
 
 def p_ion_run(parameter_dict, current_path):
+    """
+    Main function for pion to process mass spectrometry data, perform modification detection,
+    and generate various reports and summaries.
+    
+    Returns:
+    - pchem_summary_path1: Path to the updated pChem summary after processing.
+    """
     filter_frequency = parameter_dict['filter_frequency']
     blind_res_path = os.path.join(
         parameter_dict['output_path'], "source/blind/pFind-Filtered.spectra")
     blind_res = blind_res_read(blind_res_path)
     pp_path = os.path.join(parameter_dict['output_path'], "source/pParse")
     mgf_path_list = glob.glob(os.path.join(pp_path, "*.mgf"))
-    ms2_path_list = glob.glob(os.path.join(pp_path, "*.ms2"))
-    ms1_path_list = glob.glob(os.path.join(pp_path, "*.ms1"))
 
     blind_res_raw_dict = {}
     mass_spectra_dict = {}
