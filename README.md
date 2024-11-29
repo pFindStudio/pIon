@@ -46,6 +46,18 @@ msmsnum=1
 msmspath1=H:/pIon/pIon1/demo_dataset/IPM_demo.mgf
 # Additional MSMS files can be added here, e.g.
 # msmspath2=H:/pIon/pIon1/demo_dataset/another_example.mgf
+
+# ……
+
+
+# If ion labeling is adopted to facilitate the discovery of unknown modifications (True or False) 
+ion_labeling=True
+
+# One charge mass of ion, it is recommended to keep at least three decimal places 
+ion_mass=126.128
+
+# In the 0-1 range, the higher the score, the stricter the filtering, and the recommended value is 0.7
+ion_filter_ratio=0.7
 ```
 
 Make sure to adjust the paths according to your local setup.
@@ -65,6 +77,3 @@ For more detailed instructions and advanced usage, please refer to the complete 
 ## 5. License
 
 This software is provided for educational and research purposes. 
-
-------
-
