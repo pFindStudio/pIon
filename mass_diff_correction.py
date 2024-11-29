@@ -628,7 +628,7 @@ def summary_write(current_path, mod_static_dict, mod_number_dict, mod2pep, mass_
             + Top1 + '\t' + Others + '\t' + str(mass_diff_dict[mod]) + '\n'
         lines.append(line)
 
-    with open(os.path.join(current_path, 'pChem.summary'), 'w', encoding='utf-8') as f:
+    with open(os.path.join(current_path, 'blind_search.summary'), 'w', encoding='utf-8') as f:
         for line in lines:
             f.write(line)
     # print(mod_static_dict)
@@ -771,7 +771,7 @@ def new_summary_write(current_path, mod_static_dict, mod_number_dict, mod2pep, m
         idx += 1
 
     if pattern == 'blind':
-        summary_path = os.path.join(current_path, 'pChem.summary')
+        summary_path = os.path.join(current_path, 'blind_search.summary')
     else:
         summary_path = os.path.join(current_path, 'pChem-close.summary')
 
@@ -1287,7 +1287,7 @@ def unify_summary_write(current_path, mod_static_dict, mod_number_dict, mod2pep,
         new_sort_lines.append(line)
 
     if pattern == 'blind':
-        summary_path = os.path.join(current_path, 'pChem.summary')
+        summary_path = os.path.join(current_path, 'blind_search.summary')
     else:
         summary_path = os.path.join(current_path, 'pChem-close.summary')
 

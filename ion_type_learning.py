@@ -979,7 +979,7 @@ def read_mgf(parameter_dict):
 # 离子类型学习
 def ion_type_determine(current_path, modification_list, modification_dict, parameter_dict):
 
-    pchem_cfg_path = os.path.join(current_path, 'pChem.cfg')
+    pchem_cfg_path = os.path.join(current_path, 'pIon.cfg')
     # parameter_dict = parameter_file_read(pchem_cfg_path)
     print(parameter_dict)
 
@@ -1070,7 +1070,7 @@ def ion_type_determine(current_path, modification_list, modification_dict, param
 
 
 def ion_type_determine1(current_path, modification_list, modification_dict, mass_spectra_dict, blind_res, close_ion, ion_relative_mode):
-    pchem_cfg_path = os.path.join(current_path, 'pChem.cfg')
+    pchem_cfg_path = os.path.join(current_path, 'pIon.cfg')
     parameter_dict = parameter_file_read(pchem_cfg_path)
     print(parameter_dict)
 
@@ -1572,7 +1572,7 @@ def draw2pdf():
 def close_ion_learning(pchem_output_path, current_path, ion_type, modification_list, modification_dict, blind_res, mass_spectra_dict, modification_PSM, pchem_summary_path, ion_relative_mode):
     common_modification_dict = common_dict_create(current_path)
     without_mod_ion_result_path = os.path.join(
-        pchem_output_path, 'pChem_without_mod_ion_result_mode{}.summary'.format(ion_relative_mode))
+        pchem_output_path, 'pIon_without_mod_ion_result_mode{}.summary'.format(ion_relative_mode))
 
     without_mod_res, without_mod_position_list, without_mod_filtered_position_counter_list, without_mod_peak_dict, without_mod_fine_peak_dict, without_mod_fine_relative_peak_dict = without_mod_PSM_filter(
         current_path, blind_res, mass_spectra_dict, modification_dict, ion_type, ion_relative_mode)
@@ -1620,7 +1620,7 @@ def close_ion_learning(pchem_output_path, current_path, ion_type, modification_l
     close_ion_result = {}
 
     mod_ion_result_path = os.path.join(
-        pchem_output_path, 'pChem_mod_ion_result_mode{}.summary'.format(ion_relative_mode))
+        pchem_output_path, 'pIon_mod_ion_result_mode{}.summary'.format(ion_relative_mode))
     ion_dict = ion_type_determine1(current_path, modification_list, modification_dict,
                                    mass_spectra_dict, blind_res, ion_type, ion_relative_mode)
     mod_filter = []
@@ -1699,7 +1699,7 @@ def close_ion_learning(pchem_output_path, current_path, ion_type, modification_l
                 break
 
     pchem_summary_path1 = os.path.join(
-        pchem_output_path, 'pChem_ion_filter_mode{}.summary'.format(ion_relative_mode))
+        pchem_output_path, 'pIon_ion_filter_mode{}.summary'.format(ion_relative_mode))
     with open(pchem_summary_path1, 'w', encoding='utf-8') as f3:
         for index, i in enumerate(line_re):
             if index == 0:

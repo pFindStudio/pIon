@@ -3,8 +3,8 @@ Email: pengyaping21@mails.ucas.ac.cn
 Author: pengyaping21
 LastEditors: pengyaping21
 Date: 2024-11-29 14:08:21
-LastEditTime: 2024-11-29 15:29:05
-FilePath: \code1\pIon\pion.py
+LastEditTime: 2024-11-29 16:56:10
+FilePath: \pion_main\pion.py
 Description: Do not edit
 '''
 from re import T
@@ -25,7 +25,7 @@ def run():
     execution of blind search, close search (if applicable), and ion labeling. 
     """
     current_path = os.getcwd()
-    print('Welcome to use pChem! (version 2.1)')
+    print('Welcome to use pIon!')
 
     parser = ArgumentParser()
     parser.add_argument("--fasta_path", type=str,
@@ -133,7 +133,7 @@ def p_ion_run(parameter_dict, current_path):
         mass_spectra_dict.update(mass_spectra_dict_tmp)
 
     pchem_summary_path = os.path.join(
-        parameter_dict['output_path'], "reporting_summary/pChem.summary")
+        parameter_dict['output_path'], "reporting_summary/blind_search.summary")
     modification_list, modification_dict, modification_PSM, modification_site = get_modification_from_result(
         pchem_summary_path)
     pchem_output_path = os.path.join(
@@ -146,7 +146,28 @@ def p_ion_run(parameter_dict, current_path):
                                              blind_res, mass_spectra_dict, modification_PSM, modification_site, pchem_summary_path, ion_relative_mode, ion_rank_threshold, ion_filter_mode, parameter_dict['ion_filter_ratio'])
     psm_filter(pchem_summary_path1, filter_frequency)
     heat_map_draw = heatmap_ion(pchem_output_path, pchem_summary_path1)
+    move_files_and_cleanup(pchem_output_path, parameter_dict)
 
+def move_files_and_cleanup(pchem_output_path, parameter_dict):
+    temp_result_path = os.path.join(pchem_output_path, 'log_files')
+    os.makedirs(temp_result_path, exist_ok=True)
+
+    # Move specific files to the 'log_files' folder
+    files_to_move = [
+        "blind_search.summary", 
+        "pIon_mod_ion_result.summary", 
+        "pIon_modification_score.txt", 
+        "pIon_without_mod_ion_result.summary"
+    ]
+    for file_name in files_to_move:
+        file_path = os.path.join(pchem_output_path, file_name)
+        if os.path.exists(file_path):
+            shutil.move(file_path, temp_result_path)
+
+    # Check if the 'close' folder is empty and remove it if so
+    close_folder = os.path.join(parameter_dict['output_path'], 'source/close')
+    if os.path.exists(close_folder) and not os.listdir(close_folder):
+        os.rmdir(close_folder)
 
 if __name__ == "__main__":
     run()

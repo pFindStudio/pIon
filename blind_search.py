@@ -140,7 +140,7 @@ def blind_search(current_path):
 
     reporting_result_path = os.path.join(
         original_output_path, 'reporting_summary')
-    summary_filter_path = os.path.join(current_path, 'pChem.summary')
+    summary_filter_path = os.path.join(current_path, 'blind_search.summary')
 
     if not os.path.exists(reporting_result_path):
         os.makedirs(reporting_result_path)
@@ -159,10 +159,37 @@ def blind_search(current_path):
         # delete_file(current_path, 'modification-new.ini')
 
     blind_result_path = os.path.join(parameter_dict['output_path'], 'blind')
-    blind_summary_path = os.path.join(blind_result_path, 'pChem.blind.summary')
+    blind_summary_path = os.path.join(blind_result_path, 'pion.blind.summary')
     shutil.copyfile(summary_filter_path, blind_summary_path)
     remove_file(current_path, 'heat_map.pdf', reporting_result_path)
-    remove_file(current_path, 'pChem.summary', reporting_result_path)
+    remove_file(current_path, 'blind_search.summary', reporting_result_path)
+    
+def psm_filter(pchem_summary_path, filter_frequency):
+    with open(pchem_summary_path, 'r', encoding='utf-8') as f:
+        lines = f.readlines()
+    re_lines = [lines[0]]
+    max_psm = 1
+    for line in lines[1:]:
+        if line != "\n":
+            t_psms = int(line.split("\t")[5])
+            if t_psms >= max_psm:
+                max_psm = t_psms
+    index = 1
+    for line in lines[1:]:
+        if line != "\n":
+            t_psms = int(line.split("\t")[5])
+            if t_psms > filter_frequency * max_psm / 100:
+                re_lines.append(line)
+    with open(pchem_summary_path, 'w', encoding='utf-8') as f1:
+        for index, i in enumerate(re_lines):
+            if index == 0:
+                t = i
+            else:
+                line_res = i.split("\t")
+                line_res[0] = str(index)
+                t = "\t".join(line_res)
+            f1.write(t)
+        f1.write('\n')
 
 
 if __name__ == "__main__":

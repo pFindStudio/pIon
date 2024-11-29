@@ -3,11 +3,10 @@ Email: pengyaping21@mails.ucas.ac.cn
 Author: pengyaping21
 LastEditors: pengyaping21
 Date: 2023-04-10 09:54:56
-LastEditTime: 2024-11-29 10:21:43
-FilePath: \code\ion_modification_filter.py
+LastEditTime: 2024-11-29 18:30:59
+FilePath: \pion_main\ion_modification_filter.py
 Description: Do not edit
 '''
-
 
 from asyncio.windows_events import NULL
 from utils import parameter_file_read, parameter_file_read_ion
@@ -32,8 +31,6 @@ from numba import jit
 from numba.typed import List
 import seaborn as sns
 import re
-from protein_analysis import mod_summary, read_filtered_spectra, target_protein_file_generate
-
 
 h2o_mass = element_dict["H"]*2 + element_dict["O"]*1
 proton_mass = element_dict['Pm']
@@ -72,7 +69,7 @@ class MassSpectrum_for_ion:
         return relative_peak_list
 
 
-@jit
+@jit(nopython=True) 
 def cal_divide(a, b):
     return a/b
 
@@ -720,12 +717,12 @@ def mass_vector_generation_for_without_mod_ion(peptide_sequence, mod_list, modif
     return mass_vector
 
 
-@jit
+@jit(nopython=True) 
 def cal_b_mass(mass, charge, proton_mass):
     return (mass+proton_mass*charge)/charge
 
 
-@jit
+@jit(nopython=True) 
 def cal_y_mass(mass_sum, mass, charge, proton_mass, h2o_mass):
     return (mass_sum - mass + h2o_mass + charge*proton_mass)/charge
 
@@ -977,7 +974,7 @@ def delete_peak_for_mod(peak_list, delete_peak_list, mass_vector, mod_pos, mod_p
     return peak_list, reserve_flag
 
 
-@jit
+@jit(nopython=True) 
 def calc_ppm(a, b):
     return abs((a-b)/a)*1000000
 
@@ -1903,7 +1900,7 @@ def get_modification_from_result(pchem_summary_path):
 
 def deal_without_mod_psm(pchem_output_path, current_path, ion_type, modification_list, modification_dict, blind_res, mass_spectra_dict, modification_PSM, modification_site, pchem_summary_path, ion_relative_mode, ion_rank_threshold, ion_filter_mode):
     without_mod_ion_result_path = os.path.join(
-        pchem_output_path, 'pChem_without_mod_ion_result.summary')
+        pchem_output_path, 'pIon_without_mod_ion_result.summary')
 
     without_mod_res, without_mod_position_list, without_mod_filtered_position_counter_list, without_mod_peak_dict, without_mod_fine_peak_dict, without_mod_fine_relative_peak_dict, ion_area_dict, n_bins_dict, without_mod_have_close_ion_scan_dict = without_mod_PSM_filter(
         current_path, blind_res, mass_spectra_dict, modification_dict, ion_type, ion_relative_mode, pchem_output_path, ion_filter_mode, modification_site)
@@ -1989,7 +1986,7 @@ def close_ion_learning(pchem_output_path, current_path, ion_type, modification_l
                                                                                                                                        mass_spectra_dict, modification_PSM, modification_site, pchem_summary_path, ion_relative_mode, ion_rank_threshold, ion_filter_mode)
 
     mod_ion_result_path = os.path.join(
-        pchem_output_path, 'pChem_mod_ion_result.summary')
+        pchem_output_path, 'pIon_mod_ion_result.summary')
     ion_dict, mod_have_close_ion_scan_dict = ion_type_determine1(current_path, modification_list, modification_dict,
                                                                  mass_spectra_dict, blind_res, ion_type, ion_relative_mode, modification_site, ion_filter_mode, pchem_output_path)
 
@@ -2041,7 +2038,7 @@ def modification_filter_mode2(without_mod_n_bins_dict, without_mod_ion_area_dict
     # print(sorted_result)
     # draw_summary_pdf(sorted_result)
     modification_score_path = os.path.join(
-        pchem_output_path, 'pChem_modification_score.txt')
+        pchem_output_path, 'pIon_modification_score.txt')
 
     mod_filter = []
     if len(sorted_result) > 0:
@@ -2061,10 +2058,10 @@ def modification_filter_mode2(without_mod_n_bins_dict, without_mod_ion_area_dict
             else:
                 break
     print(mod_filter)
-    if without_mod_close_ion_rank == 0:
-        # mod_filter = []
-        warnings.warn(
-            "The concentration of eigenions in the unmodified spectra is very high, it will be difficult to distinguish probe modifications from other modifications!")
+    # if without_mod_close_ion_rank == 0:
+    #     # mod_filter = []
+    #     warnings.warn(
+    #         "The concentration of eigenions in the unmodified spectra is very high, it will be difficult to distinguish probe modifications from other modifications!")
     mod_final_filter, pchem_summary_path1 = filter_write_mod(
         mod_filter, pchem_summary_path, ion_dict, ion_filter_mode, pchem_output_path)
     return pchem_summary_path1, mod_filter
@@ -2151,7 +2148,7 @@ def filter_write_mod(mod_filter, pchem_summary_path, ion_dict, ion_filter_mode, 
         line.split("\t")[5]), reverse=True)
     line_re.insert(0, line_0)
     pchem_summary_path1 = os.path.join(
-        pchem_output_path, 'pChem_ion_filter.summary')
+        pchem_output_path, 'pIon_filter.summary')
     mod_final_filter = []
     with open(pchem_summary_path1, 'w', encoding='utf-8') as f3:
         id = 0
@@ -2274,7 +2271,7 @@ def take_closest(myList, myNumber):
         return myList[pos - 1]
 
 
-@jit
+@jit(nopython=True) 
 def calc_tmz(t_ms2_charge, t_exp_MH, pm):
     t_mz = round(((t_ms2_charge-1) *
                   pm+t_exp_MH)/t_ms2_charge, 6)
@@ -2519,33 +2516,33 @@ if __name__ == "__main__":
     ion_relative_mode = int(parameter_dict_ion['ion_relative_mode'])
     ion_rank_threshold = int(parameter_dict_ion['ion_rank_threshold'])
     ion_filter_mode = int(parameter_dict_ion['ion_filter_mode'])
-    # pchem_summary_path1, ion_dict, mod_filter = close_ion_learning(pchem_output_path, current_path, ion_type, modification_list, modification_dict,
-    #                                                                blind_res, mass_spectra_dict, modification_PSM, modification_site, pchem_summary_path, ion_relative_mode, ion_rank_threshold, ion_filter_mode)
-    pchem_summary_path1 = close_ion_learning(pchem_output_path, current_path, ion_type, modification_list, modification_dict,
-                                             blind_res, mass_spectra_dict, modification_PSM, modification_site, pchem_summary_path, ion_relative_mode, ion_rank_threshold, ion_filter_mode)
-    if parameter_dict_ion['plabel_run'] == 'True':
-        spectra_dict, modification_dict = plabel_run1(current_path)
-    delete_psite_temp_file(current_path)
-    pchem_summary_path2 = os.path.join(
-        pchem_output_path, 'pChem_ion_filter_site_mode{}.summary'.format(ion_filter_mode))
-    file3 = open(pchem_summary_path1, "r")
-    file4 = open(pchem_summary_path2, "w")
-    s = file3.read()
-    w = file4.write(s)
-    file3.close()
-    file4.close()
-    modify_p_summary(pchem_summary_path2, p_value_threshold)
-    heat_map_draw = heatmap_ion(pchem_output_path, pchem_summary_path1)
-    # 解析靶标蛋白
-    pchem_summary_path = pchem_summary_path2
-    summary_modification_dict = mod_summary(pchem_summary_path)
-    pchem_cfg_path = os.path.join(current_path, 'pIon.cfg')
-    parameter_dict = parameter_file_read(pchem_cfg_path)
-    fasta_path = parameter_dict["fasta_path"]
-    # filtered_spectra_path = r"G:\pChem_ion-2023-4\pChem-main\result_0705\Fusion3_YangJing_HJX_UY_10_WIN0-7_20230630_F1_R1\source\blind\pFind-Filtered.spectra"
-    # fasta_path = r"G:\pChem_ion-2023-4\pChem-main\Protein_seq_database\Homo_sapiens_uniprot_canonical_20395_entries_20210516.fasta"
-    protein_sq_mod_dict, protein_fasta_dict = read_filtered_spectra(
-        blind_res_path, summary_modification_dict, fasta_path)
-    target_protein_file_generate(
-        protein_sq_mod_dict, protein_fasta_dict, pchem_output_path)
-    os.system("pause")
+#     # pchem_summary_path1, ion_dict, mod_filter = close_ion_learning(pchem_output_path, current_path, ion_type, modification_list, modification_dict,
+#     #                                                                blind_res, mass_spectra_dict, modification_PSM, modification_site, pchem_summary_path, ion_relative_mode, ion_rank_threshold, ion_filter_mode)
+#     pchem_summary_path1 = close_ion_learning(pchem_output_path, current_path, ion_type, modification_list, modification_dict,
+#                                              blind_res, mass_spectra_dict, modification_PSM, modification_site, pchem_summary_path, ion_relative_mode, ion_rank_threshold, ion_filter_mode)
+#     if parameter_dict_ion['plabel_run'] == 'True':
+#         spectra_dict, modification_dict = plabel_run1(current_path)
+#     delete_psite_temp_file(current_path)
+#     pchem_summary_path2 = os.path.join(
+#         pchem_output_path, 'pChem_ion_filter_site_mode{}.summary'.format(ion_filter_mode))
+#     file3 = open(pchem_summary_path1, "r")
+#     file4 = open(pchem_summary_path2, "w")
+#     s = file3.read()
+#     w = file4.write(s)
+#     file3.close()
+#     file4.close()
+#     modify_p_summary(pchem_summary_path2, p_value_threshold)
+#     heat_map_draw = heatmap_ion(pchem_output_path, pchem_summary_path1)
+#     # 解析靶标蛋白
+#     pchem_summary_path = pchem_summary_path2
+#     summary_modification_dict = mod_summary(pchem_summary_path)
+#     pchem_cfg_path = os.path.join(current_path, 'pIon.cfg')
+#     parameter_dict = parameter_file_read(pchem_cfg_path)
+#     fasta_path = parameter_dict["fasta_path"]
+#     # filtered_spectra_path = r"G:\pChem_ion-2023-4\pChem-main\result_0705\Fusion3_YangJing_HJX_UY_10_WIN0-7_20230630_F1_R1\source\blind\pFind-Filtered.spectra"
+#     # fasta_path = r"G:\pChem_ion-2023-4\pChem-main\Protein_seq_database\Homo_sapiens_uniprot_canonical_20395_entries_20210516.fasta"
+#     protein_sq_mod_dict, protein_fasta_dict = read_filtered_spectra(
+#         blind_res_path, summary_modification_dict, fasta_path)
+#     target_protein_file_generate(
+#         protein_sq_mod_dict, protein_fasta_dict, pchem_output_path)
+#     os.system("pause")
