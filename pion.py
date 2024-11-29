@@ -2,9 +2,9 @@
 Email: pengyaping21@mails.ucas.ac.cn
 Author: pengyaping21
 LastEditors: pengyaping21
-Date: 2022-06-28 12:07:49
-LastEditTime: 2024-11-27 15:49:31
-FilePath: \pChem-main\pion.py
+Date: 2024-11-29 14:08:21
+LastEditTime: 2024-11-29 15:08:02
+FilePath: \code1\pIon\pion.py
 Description: Do not edit
 '''
 from re import T
@@ -36,25 +36,6 @@ def run():
     cfg_path = os.path.join(current_path, 'pIon.cfg')
     parameter_dict = parameter_file_read(cfg_path)
 
-    '''
-    target_path = [os.getcwd()] 
-    # print(parameter_dict)
-    pfind_path_find(parameter_dict['pfind_install_path'], target_path)
-    if len(target_path) == 1: 
-        print('please set the correct pfind install path!') 
-        return 
-    if len(target_path) > 2: 
-        print('More than one pFind are installed in current path, please set in detail!')
-        return  
-    parameter_dict['pfind_install_path'] = target_path[1]
-    '''
-
-    # 判断参数的正确性
-    '''
-    if os.path.exists(parameter_dict['pfind_install_path']) == False: 
-        print('pfind install path is not exist!') 
-        return
-    '''
     if os.path.exists(parameter_dict['output_path']) == False:
         print('output path is not exist!')
         return
@@ -132,23 +113,15 @@ def p_ion_run(parameter_dict, current_path):
     mass_spectra_dict = {}
     for i in range(len(mgf_path_list)):
         mgf_path = mgf_path_list[i]
-        # ms2_path = ms2_path_list[i]
-        # ms1_path = ms1_path_list[i]
-        # blind_res 按名称分类
         t_name = mgf_path.split(
             "\\")[-1].split(".")[0][:mgf_path.split("\\")[-1].split(".")[0].rfind("_")]
         blind_res_raw_dict[t_name] = []
         for line in blind_res:
             if t_name in line:
                 blind_res_raw_dict[t_name].append(line)
-
-        start_time = time.time()
-
         mass_spectra_dict_tmp = mgf_read_for_ion_pfind_filter2(
             mgf_path, blind_res_raw_dict[t_name])
         mass_spectra_dict.update(mass_spectra_dict_tmp)
-        end_time = time.time()
-
 
     pchem_summary_path = os.path.join(
         parameter_dict['output_path'], "reporting_summary/pChem.summary")
@@ -164,7 +137,6 @@ def p_ion_run(parameter_dict, current_path):
                                              blind_res, mass_spectra_dict, modification_PSM, modification_site, pchem_summary_path, ion_relative_mode, ion_rank_threshold, ion_filter_mode, parameter_dict['ion_filter_ratio'])
     psm_filter(pchem_summary_path1, filter_frequency)
     heat_map_draw = heatmap_ion(pchem_output_path, pchem_summary_path1)
-
 
 def psm_filter(pchem_summary_path, filter_frequency):
     with open(pchem_summary_path, 'r', encoding='utf-8') as f:
@@ -192,7 +164,6 @@ def psm_filter(pchem_summary_path, filter_frequency):
                 t = "\t".join(line_res)
             f1.write(t)
         f1.write('\n')
-
 
 if __name__ == "__main__":
     run()
