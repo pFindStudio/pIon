@@ -7,9 +7,9 @@ The ever-growing field of covalent drug discovery and chemoproteomics has fueled
 ## 2. Download
 
 You can download the software and demo dataset from the official **pIon website**:
-[pIon Download Page](http://pfind.org/software/pIon/index.html)
+[pIon Download Page](http://pfind.net/software/pIon/index.html)
 
-The user guide is also available on the [user guide webpage](http://pfind.org/software/pIon/index.html).
+The user guide is also available on the [user guide webpage](http://pfind.net/software/pIon/index.html).
 
 ## 3. Requirements
 
@@ -76,7 +76,7 @@ python pion.py
 
 This will initiate the program using the settings specified in the `pIon.cfg` file.
 
-For more detailed instructions and advanced usage, please refer to the complete **user guide** available on the [pIon website](http://pfind.org/software/pIon/index.html).
+For more detailed instructions and advanced usage, please refer to the complete **user guide** available on the [pIon website](http://pfind.net/software/pIon/index.html).
 
 ## 5. License
 
